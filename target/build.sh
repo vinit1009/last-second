@@ -22,5 +22,15 @@ mkdir -p "$IMAGE/local/snippets"
 sed "s|/work/last-second|$REPO|g" "$REPO/image/local/snippets/system_files.custom" > "$IMAGE/local/snippets/system_files.custom"
 cp "$REPO/image/local/snippets/post_start.custom" "$IMAGE/local/snippets/"
 cd "$IMAGE"
-mkqnximage --type=qemu --arch=x86_64 --cpu=1 --ram=1G --hostname=last-second --noprompt --force --build
+# SECPOL=open boots with secpolgenerate recording the rules the system needs; SECPOL=secure
+# enforces POLICY (a text policy, compiled by mkqnximage). Default: no security policy.
+SECPOL_ARGS=()
+case "${SECPOL:-no}" in
+  no) ;;
+  open) SECPOL_ARGS=(--secpol=open ${POLICY:+--policy=$POLICY}) ;;
+  secure) SECPOL_ARGS=(--secpol=secure --policy="${POLICY:?set POLICY to a text policy for a secure image}") ;;
+  *) echo "SECPOL must be no, open or secure" >&2; exit 2 ;;
+esac
+echo "${SECPOL:-no}" > "$REPO/build/x86_64/secpol-mode"
+mkqnximage --type=qemu --arch=x86_64 --cpu=1 --ram=1G --hostname=last-second "${SECPOL_ARGS[@]}" --noprompt --force --build
 echo "Image ready in $IMAGE/output. Next, on the host with QEMU: target/run-qemu.sh $IMAGE"

@@ -4,3 +4,4 @@
 [perms=755] last-second/hog=/work/last-second/build/x86_64/hog
 [perms=755] last-second/bbtool=/work/last-second/build/x86_64/bbtool
 [perms=755] last-second/demo.sh=/work/last-second/scenario/demo.sh
+[perms=644] last-second/secpol-mode=/work/last-second/build/x86_64/secpol-mode

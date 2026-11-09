@@ -2,3 +2,5 @@ build/
 runs/
 *.core
 .DS_Store
+runs-open/
+runs-secure/
