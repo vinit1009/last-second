@@ -1,0 +1,6 @@
+# Added to the system partition (/system) by mkqnximage: Last Second's recorder, tools and demo.
+[perms=755] last-second/blackboxd=/work/last-second/build/x86_64/blackboxd
+[perms=755] last-second/pump=/work/last-second/build/x86_64/pump
+[perms=755] last-second/hog=/work/last-second/build/x86_64/hog
+[perms=755] last-second/bbtool=/work/last-second/build/x86_64/bbtool
+[perms=755] last-second/demo.sh=/work/last-second/scenario/demo.sh

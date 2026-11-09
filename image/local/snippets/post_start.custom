@@ -1,0 +1,2 @@
+# Run the Last Second demo once the system is up; everything is printed on the console.
+/system/last-second/demo.sh &

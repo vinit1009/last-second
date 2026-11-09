@@ -1,0 +1,4 @@
+build/
+runs/
+*.core
+.DS_Store
