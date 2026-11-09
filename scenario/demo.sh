@@ -28,6 +28,7 @@ sleep 1
 T bbtool_t bbtool reset
 
 echo "===LS-SCENE crash==="
+rm -f /data/var/dumper/pump.core*   # the data partition persists between boots
 T pump_t pump -d 5 -c 2500 &
 sleep 4
 T bbtool_t bbtool status
