@@ -1,0 +1,79 @@
+
+non UEFI or UEFI+CSM boot
+ACPI table not found (0x4746434d)
+System behaves poorly without PCID support.
+overriding mask for controller 2, vector_base 0
+---> Starting slogger2
+---> Starting PCI Services
+---> Starting fsevmgr
+# ---> Starting devb
+---> Mounting file systems
+Path=0 - Intel 82371SB
+ target=0 lun=0     Direct-Access(0) -          QEMU HARDDISK    Rev: 2.5+
+Path=1 - Intel 82371SB
+ target=0 lun=0            CD-ROM(5) - QEMU     QEMU DVD-ROM     Rev: 2.5+
+---> Mounting file systems
+---> Starting Networking
+if_up: tries exhausted
+ifconfig: interface vtnet0 does not exist
+no valid interfaces found
+---> Starting sshd
+/usr/libexec/sshd-auth does not exist or is not executable
+---> Starting misc
+
+To exit QEMU, type <ctrl>a x
+
+[?7hProcess count:23
+Startup complete
+QNX last-second 8.0.0 2026/06/05-16:26:03EDT x86pc x86_64
+===LS-BEGIN stress===
+blackboxd: recording at /dev/blackbox: 30000 samples, post-trigger 200 ms, watchdog every 1000 us at priority 60
+===LS-ROUND alone===
+blackboxd: producer 1 "pump1" declared, heartbeat deadline 5000 us
+blackboxd: producer 2 "pump2" declared, heartbeat deadline 5000 us
+blackboxd: producer 3 "pump3" declared, heartbeat deadline 5000 us
+blackboxd: producer 4 "pump4" declared, heartbeat deadline 5000 us
+blackboxd: producer 5 "pump5" declared, heartbeat deadline 5000 us
+blackboxd: producer 6 "pump6" declared, heartbeat deadline 5000 us
+blackboxd: producer 7 "pump7" declared, heartbeat deadline 5000 us
+blackboxd: producer 8 "pump8" declared, heartbeat deadline 5000 us
+pump1: 4000 ticks; write() to the recorder took p50 39.8 us, p99 39.8 us, max 39.8 us
+pump2: 4000 ticks; write() to the recorder took p50 36.0 us, p99 36.0 us, max 39.4 us
+pump3: 4000 ticks; write() to the recorder took p50 32.3 us, p99 32.3 us, max 35.6 us
+pump4: 4000 ticks; write() to the recorder took p50 21.0 us, p99 21.0 us, max 34.0 us
+pump5: 4000 ticks; write() to the recorder took p50 24.8 us, p99 24.8 us, max 34.5 us
+pump6: 4000 ticks; write() to the recorder took p50 28.5 us, p99 28.5 us, max 35.1 us
+pump7: 4000 ticks; write() to the recorder took p50 13.5 us, p99 13.5 us, max 33.0 us
+pump8: 4000 ticks; write() to the recorder took p50 17.2 us, p99 17.2 us, max 158.3 us
+blackboxd: reset, recording
+===LS-ROUND reader===
+blackboxd: producer 1 "pump1" declared, heartbeat deadline 5000 us
+blackboxd: producer 2 "pump2" declared, heartbeat deadline 5000 us
+blackboxd: producer 3 "pump3" declared, heartbeat deadline 5000 us
+blackboxd: producer 4 "pump4" declared, heartbeat deadline 5000 us
+blackboxd: producer 5 "pump5" declared, heartbeat deadline 5000 us
+blackboxd: producer 6 "pump6" declared, heartbeat deadline 5000 us
+blackboxd: producer 7 "pump7" declared, heartbeat deadline 5000 us
+blackboxd: producer 8 "pump8" declared, heartbeat deadline 5000 us
+blackboxd: TRIGGER manual trigger
+blackboxd: FROZEN with 9661 samples (1.2 s), 200 ms after the trigger; read with bbtool dump
+bbtool: producer 1's longest gap between samples: 1.0 ms, ending at -222.6 ms
+blackboxd: reset, recording
+blackboxd: TRIGGER manual trigger
+blackboxd: FROZEN with 1624 samples (0.2 s), 200 ms after the trigger; read with bbtool dump
+bbtool: producer 1's longest gap between samples: 1.0 ms, ending at 189.6 ms
+blackboxd: reset, recording
+blackboxd: TRIGGER manual trigger
+blackboxd: FROZEN with 1624 samples (0.2 s), 200 ms after the trigger; read with bbtool dump
+bbtool: producer 1's longest gap between samples: 1.0 ms, ending at 49.4 ms
+blackboxd: reset, recording
+pump1: 4000 ticks; write() to the recorder took p50 39.5 us, p99 39.8 us, max 48.0 us
+pump2: 4000 ticks; write() to the recorder took p50 32.0 us, p99 32.3 us, max 44.2 us
+pump3: 4000 ticks; write() to the recorder took p50 20.9 us, p99 21.0 us, max 36.6 us
+pump4: 4000 ticks; write() to the recorder took p50 28.3 us, p99 28.5 us, max 42.8 us
+pump5: 4000 ticks; write() to the recorder took p50 13.4 us, p99 13.5 us, max 33.0 us
+pump6: 4000 ticks; write() to the recorder took p50 17.2 us, p99 17.2 us, max 35.4 us
+pump7: 4000 ticks; write() to the recorder took p50 24.6 us, p99 24.8 us, max 39.1 us
+pump8: 4000 ticks; write() to the recorder took p50 35.7 us, p99 36.0 us, max 46.5 us
+blackboxd: reset, recording
+===LS-DONE===

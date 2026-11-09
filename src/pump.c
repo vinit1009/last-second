@@ -7,7 +7,7 @@
  *   tick woke up (us).
  * It declares a heartbeat deadline (-d ms), so the recorder triggers if the loop stops.
  *
- * usage: pump [-d deadline_ms] [-p priority] [-t run_seconds] [-c crash_after_ticks]
+ * usage: pump [-d deadline_ms] [-p priority] [-t run_seconds] [-c crash_after_ticks] [-N name]
  *   -c N dereferences a null pointer at tick N, to show the recorder keeping the samples before a
  *   crash. SIGTERM/SIGINT stop the loop cleanly (with a goodbye), so they are not a trigger.
  */
@@ -47,14 +47,16 @@ int main(int argc, char **argv)
 {
     unsigned deadline_ms = 5, run_s = 0, crash_after = 0;
     int priority = 30, opt;
-    while ((opt = getopt(argc, argv, "d:p:t:c:")) != -1) {
+    const char *name = "pump";
+    while ((opt = getopt(argc, argv, "d:p:t:c:N:")) != -1) {
         switch (opt) {
         case 'd': deadline_ms = (unsigned)strtoul(optarg, NULL, 0); break;
         case 'p': priority = atoi(optarg); break;
         case 't': run_s = (unsigned)strtoul(optarg, NULL, 0); break;
         case 'c': crash_after = (unsigned)strtoul(optarg, NULL, 0); break;
+        case 'N': name = optarg; break;
         default:
-            fprintf(stderr, "usage: pump [-d deadline_ms] [-p priority] [-t run_seconds] [-c crash_after_ticks]\n");
+            fprintf(stderr, "usage: pump [-d deadline_ms] [-p priority] [-t run_seconds] [-c crash_after_ticks] [-N name]\n");
             return EXIT_FAILURE;
         }
     }
@@ -72,7 +74,7 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
     bb_hello_t hello = { .deadline_us = deadline_ms * 1000u };
-    strncpy(hello.name, "pump", sizeof hello.name - 1);
+    strncpy(hello.name, name, sizeof hello.name - 1);
     int rc = devctl(fd, DCMD_BB_HELLO, &hello, sizeof hello, NULL);
     if (rc != EOK) {
         fprintf(stderr, "pump: DCMD_BB_HELLO: %s\n", strerror(rc));
@@ -102,7 +104,7 @@ int main(int argc, char **argv)
     /* Simulated pump: flow follows the motor command with a 50 ms time constant. */
     float const dt = PERIOD_US / 1e6f, tau = 0.05f, gain = 2.0f, kp = 0.8f, ki = 6.0f;
     float flow = 0, integ = 0;
-    printf("pump: running at %u Hz, priority %d, heartbeat deadline %u ms\n", 1000000u / PERIOD_US, priority, deadline_ms);
+    printf("%s: running at %u Hz, priority %d, heartbeat deadline %u ms\n", name, 1000000u / PERIOD_US, priority, deadline_ms);
     fflush(stdout);
 
     timer_settime(timer, 0, &its, NULL);
@@ -138,7 +140,7 @@ int main(int argc, char **argv)
         write_ns[n++] = (uint32_t)((t1 - t0) * 1000000000u / cps);
 
         if (crash_after && seq == crash_after) {
-            printf("pump: crashing on purpose at tick %u\n", seq);
+            printf("%s: crashing on purpose at tick %u\n", name, seq);
             fflush(stdout);
             *(volatile int *)0 = 1;
         }
@@ -148,7 +150,7 @@ int main(int argc, char **argv)
 
     qsort(write_ns, n, sizeof write_ns[0], cmp_u32);
     if (n > 0) {
-        printf("pump: %zu ticks; write() to the recorder took p50 %.1f us, p99 %.1f us, max %.1f us\n", n,
+        printf("%s: %zu ticks; write() to the recorder took p50 %.1f us, p99 %.1f us, max %.1f us\n", name, n,
                write_ns[n / 2] / 1000.0, write_ns[(n * 99) / 100] / 1000.0, write_ns[n - 1] / 1000.0);
     }
     free(write_ns);

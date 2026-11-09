@@ -32,5 +32,6 @@ case "${SECPOL:-no}" in
   *) echo "SECPOL must be no, open or secure" >&2; exit 2 ;;
 esac
 echo "${SECPOL:-no}" > "$REPO/build/x86_64/secpol-mode"
+echo "${SCENARIO:-demo}" > "$REPO/build/x86_64/scenario-mode"   # SCENARIO=stress runs scenario/stress.sh at boot
 mkqnximage --type=qemu --arch=x86_64 --cpu=1 --ram=1G --hostname=last-second "${SECPOL_ARGS[@]}" --noprompt --force --build
 echo "Image ready in $IMAGE/output. Next, on the host with QEMU: target/run-qemu.sh $IMAGE"

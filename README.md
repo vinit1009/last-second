@@ -31,6 +31,7 @@ All of this runs at boot from `scenario/demo.sh`, on an image built with `--secp
 | Starvation | `hog` runs for 20 ms at priority 40, above the pump's 30. The recorder triggers **6.0 ms** after the pump's last sample (5 ms deadline plus the 1 ms watchdog period), while the hog still holds the CPU: its watchdog pulse is delivered at priority 60. The window shows a **20.8 ms** gap, then the 20 queued timer pulses run back to back. A control engineer may prefer to skip missed ticks rather than replay them. |
 | Crash | `pump -c 2500` dereferences a null pointer at tick 2500. The heartbeat triggers 6.0 ms later, and the recorder then sees the process end without a goodbye **22.2 ms** after the trigger (10 to 64 ms across my runs). QNX's `dumper` also wrote `pump.core`. That tells a crash (or kill) apart from a hang. The frozen window holds the loop's last 2.5 s, and the core file holds the stack. |
 | Cost to the loop | A `write()` of one sample to the recorder took **4.8 us** at p50 and p99 and **7.2 us** at most, over 4,107 ticks. |
+| Eight producers | `SCENARIO=stress` runs eight 1 kHz pumps at the same priority. They wake on the same clock tick, so their writes queue at the recorder's one thread: p99 was **13.5 to 39.8 us** depending on a pump's place in that queue (about 3.8 us per pump ahead of it), and the worst single write 158.3 us. With `bbtool` meanwhile freezing and reading the whole window three times (up to 9,661 samples) at a lower priority, the p99s were unchanged and the worst write was 48.0 us. Log: `examples/stress-serial.log`. |
 | Survives a reboot | Both frozen windows were saved to `/data/var/blackbox` (142 KB and 110 KB of CSV). In a separate test I booted the image twice, with QEMU killed at the end of each run like a power cut. The second boot listed the first boot's windows. Before the directory sync was added, that test found a window left as `.part`. |
 | Security | Under the policy, `bbtool` run as any other type gets `open /dev/blackbox: Operation not permitted`, and a shell gets `cannot create /dev/blackbox: Operation not permitted`. The recorder never sees the message. |
 
@@ -92,14 +93,14 @@ devctl(fd, DCMD_BB_GOODBYE, NULL, 0, NULL);   /* a clean stop is not a trigger *
 - `src/core.c`: the recorder's logic, plain C (ring, producers, heartbeats, trigger -> freeze), tested on the host by `tests/test_core.c`.
 - `src/blackboxd.c`: the resource manager.
 - `src/pump.c`, `src/hog.c`, `src/bbtool.c`: the demo and the service tool.
-- `scenario/demo.sh`, `image/local/snippets/`, `target/`: the boot-time demo, the image, building and QEMU.
+- `scenario/demo.sh`, `scenario/stress.sh`, `image/local/snippets/`, `target/`: the boot-time demo and stress run, the image, building and QEMU.
 - `policy/last-second.secpol`: the security policy. `host/plot.py` draws the charts.
 - `examples/`: the console log and both frozen windows from the run on the secure image (what the charts and the numbers above come from).
 
 ## Limits
 
 - Saved windows are plain CSV on the data partition. A real device would put them on dedicated storage and sign them, so they can be trusted as evidence.
-- One recorder thread serves every producer. That is fine for a handful of 1 kHz loops; heavier use would want a pool or shared memory with a lock-free ring.
+- One recorder thread serves every producer, so producers that wake on the same tick queue for it (see the eight-producer row above). For more loops, or faster ones, a shared-memory ring per producer with the resource manager as the control plane would remove the queue.
 - The numbers above are emulated time under QEMU. Measure on your target before choosing deadlines.
 - This is a demonstration, not a certified medical or safety component.
 

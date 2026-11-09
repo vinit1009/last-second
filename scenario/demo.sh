@@ -5,6 +5,7 @@
 # Each frozen window is dumped as CSV between markers on the console.
 export PATH=/system/last-second:/system/bin:$PATH
 cd /system/last-second
+if [ "$(cat scenario-mode 2>/dev/null)" = stress ]; then exec ./stress.sh; fi
 MODE=$(cat secpol-mode 2>/dev/null || echo no)
 # With a security policy, every process runs as its own type: only pump_t and bbtool_t may
 # connect to the recorder (blackbox_t).
