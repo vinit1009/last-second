@@ -28,7 +28,7 @@ All of this runs at boot from `scenario/demo.sh`, on an image built with `--secp
 | | What happened |
 |---|---|
 | Starvation | `hog` runs for 20 ms at priority 40, above the pump's 30. The recorder triggers **6.0 ms** after the pump's last sample (5 ms deadline plus the 1 ms watchdog period), while the hog still holds the CPU: its watchdog pulse is delivered at priority 60. The window shows a **20.9 ms** gap, then the 20 queued timer pulses run back to back. A control engineer may prefer to skip missed ticks rather than replay them. |
-| Crash | `pump -c 2500` dereferences a null pointer at tick 2500. The heartbeat triggers 6.0 ms later, and the recorder then sees the process end without a goodbye **64.3 ms** after the trigger, once QNX's `dumper` had written `pump.core`. That tells a crash (or kill) apart from a hang. The frozen window holds the loop's last 2.5 s, and the core file holds the stack. |
+| Crash | `pump -c 2500` dereferences a null pointer at tick 2500. The heartbeat triggers 6.0 ms later, and the recorder then sees the process end without a goodbye **64.3 ms** after the trigger (24 to 64 ms across my runs). QNX's `dumper` also wrote `pump.core`. That tells a crash (or kill) apart from a hang. The frozen window holds the loop's last 2.5 s, and the core file holds the stack. |
 | Cost to the loop | A `write()` of one sample to the recorder took **4.8 us** at p50 and p99 and **11.3 us** at most, over 4,110 ticks. |
 | Security | Under the policy, `bbtool` run as any other type gets `open /dev/blackbox: Operation not permitted`, and a shell gets `cannot create /dev/blackbox: Operation not permitted`. The recorder never sees the message. |
 
