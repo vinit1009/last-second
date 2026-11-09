@@ -9,17 +9,25 @@
  * - A producer whose connection closes without DCMD_BB_GOODBYE (its process died) is a trigger.
  * - After a trigger the recorder keeps recording for -p ms, then freezes; read() returns the
  *   frozen window, oldest sample first.
+ * - With -s dir, a low-priority thread also saves each frozen window there as CSV (the newest -k
+ *   files are kept), so it survives a reboot. The dispatch thread never touches the disk: a
+ *   producer's write() is never made to wait for a file system.
  *
- * usage: blackboxd [-n capacity] [-p post_ms] [-t tick_us] [-P tick_priority]
+ * usage: blackboxd [-n capacity] [-p post_ms] [-t tick_us] [-P tick_priority] [-s dir] [-k keep]
  */
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
+#include <pthread.h>
+#include <sched.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
 #include <sys/neutrino.h>
+#include <sys/stat.h>
 #include <sys/syspage.h>
 
 struct bb_ocb;
@@ -39,6 +47,13 @@ struct bb_ocb {
 static bb_core_t core;
 static uint64_t cps;
 static bb_sample_t reply_buf[256];
+
+/* Saving frozen windows (-s): the dispatch thread only raises save_pending; the saver thread writes. */
+static const char *save_dir;
+static unsigned keep = 20;
+static pthread_mutex_t save_mx = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t save_cv = PTHREAD_COND_INITIALIZER;
+static int save_pending, saving;
 
 static struct bb_ocb *ocb_calloc(resmgr_context_t *ctp, iofunc_attr_t *attr)
 {
@@ -138,11 +153,18 @@ static int io_devctl(resmgr_context_t *ctp, io_devctl_t *msg, struct bb_ocb *ocb
     case DCMD_BB_TRIGGER:
         bb_trigger(&core, BB_REASON_MANUAL, ocb->producer, now);
         break;
-    case DCMD_BB_RESET:
+    case DCMD_BB_RESET: {
+        pthread_mutex_lock(&save_mx);
+        int const busy = save_pending || saving;
+        pthread_mutex_unlock(&save_mx);
+        if (busy) {
+            return EBUSY; /* the saver is still reading the frozen window; ask again shortly */
+        }
         bb_reset(&core, now);
         printf("blackboxd: reset, recording\n");
         fflush(stdout);
         break;
+    }
     case DCMD_BB_STATUS:
         bb_get_status(&core, (bb_status_t *)data, now);
         nbytes = sizeof(bb_status_t);
@@ -164,6 +186,136 @@ static int io_close_ocb(resmgr_context_t *ctp, void *reserved, struct bb_ocb *oc
         ocb->producer = 0;
     }
     return iofunc_close_ocb_default(ctp, reserved, &ocb->hdr);
+}
+
+static int name_cmp(const void *a, const void *b)
+{
+    return strcmp(*(char *const *)a, *(char *const *)b);
+}
+
+/* Removes windows whose save was interrupted (a .part left by a power cut or a kill). */
+static void remove_partial(void)
+{
+    DIR *const dir = opendir(save_dir);
+    if (dir == NULL) {
+        return;
+    }
+    struct dirent *e;
+    while ((e = readdir(dir)) != NULL) {
+        size_t const len = strlen(e->d_name);
+        if (strncmp(e->d_name, "window-", 7) == 0 && len > 5 && strcmp(e->d_name + len - 5, ".part") == 0) {
+            char path[PATH_MAX];
+            snprintf(path, sizeof path, "%s/%s", save_dir, e->d_name);
+            printf("blackboxd: removing %s, an interrupted save\n", path);
+            unlink(path);
+        }
+    }
+    closedir(dir);
+    fflush(stdout);
+}
+
+/* Keeps the newest `keep` windows; the names sort by time. */
+static void prune(void)
+{
+    DIR *const dir = opendir(save_dir);
+    if (dir == NULL) {
+        return;
+    }
+    char *names[512];
+    size_t n = 0;
+    struct dirent *e;
+    while ((e = readdir(dir)) != NULL && n < sizeof names / sizeof names[0]) {
+        size_t const len = strlen(e->d_name);
+        if (strncmp(e->d_name, "window-", 7) == 0 && len > 4 && strcmp(e->d_name + len - 4, ".csv") == 0) {
+            names[n++] = strdup(e->d_name);
+        }
+    }
+    closedir(dir);
+    qsort(names, n, sizeof names[0], name_cmp);
+    for (size_t i = 0; i + keep < n; ++i) {
+        char path[PATH_MAX];
+        snprintf(path, sizeof path, "%s/%s", save_dir, names[i]);
+        unlink(path);
+    }
+    for (size_t i = 0; i < n; ++i) {
+        free(names[i]);
+    }
+}
+
+/* Runs on the saver thread while the ring is frozen: the dispatch thread does not modify the
+ * samples in that state, and DCMD_BB_RESET is refused until this returns. */
+static void save_window(void)
+{
+    static unsigned saved;
+    char stamp[32], path[PATH_MAX], part[PATH_MAX + 8];
+    time_t const now = time(NULL);
+    struct tm tm;
+    localtime_r(&now, &tm);
+    strftime(stamp, sizeof stamp, "%Y%m%d-%H%M%S", &tm);
+    snprintf(path, sizeof path, "%s/window-%s-%03u.csv", save_dir, stamp, ++saved);
+    snprintf(part, sizeof part, "%s.part", path);
+    FILE *const f = fopen(part, "w");
+    if (f == NULL) {
+        printf("blackboxd: cannot save the window to %s: %s\n", part, strerror(errno));
+        fflush(stdout);
+        return;
+    }
+    fprintf(f, "# Last Second window: trigger %s", bb_reason_name(core.reason));
+    if (core.culprit != 0) {
+        fprintf(f, " by \"%s\"", core.culprit_name);
+    }
+    fprintf(f, "; %u samples; times in ms relative to the trigger\nt_ms,producer,seq,v0,v1,v2,v3\n", core.count);
+    bb_sample_t chunk[256];
+    for (uint32_t i = 0; i < core.count;) {
+        uint32_t const got = bb_window(&core, i, chunk, sizeof chunk / sizeof chunk[0]);
+        if (got == 0) {
+            break;
+        }
+        for (uint32_t k = 0; k < got; ++k) {
+            bb_sample_t const *s = &chunk[k];
+            fprintf(f, "%.3f,%u,%u,%.3f,%.3f,%.3f,%.3f\n", ((double)s->t_cycles - (double)core.trigger_cycles) * 1000.0 / (double)cps,
+                    s->producer, s->seq, s->v[0], s->v[1], s->v[2], s->v[3]);
+        }
+        i += got;
+    }
+    int ok = fflush(f) == 0 && fsync(fileno(f)) == 0;
+    ok = fclose(f) == 0 && ok;
+    if (!ok || rename(part, path) != 0) {
+        printf("blackboxd: saving %s failed: %s\n", path, strerror(errno));
+        fflush(stdout);
+        unlink(part);
+        return;
+    }
+    /* The rename is a change to the directory: sync it too, or a power cut can leave only the .part. */
+    int const dfd = open(save_dir, O_RDONLY);
+    if (dfd == -1 || fsync(dfd) == -1) {
+        sync();
+    }
+    if (dfd != -1) {
+        close(dfd);
+    }
+    printf("blackboxd: saved the frozen window to %s\n", path);
+    fflush(stdout);
+    prune();
+}
+
+static void *saver(void *arg)
+{
+    (void)arg;
+    for (;;) {
+        pthread_mutex_lock(&save_mx);
+        while (!save_pending) {
+            pthread_cond_wait(&save_cv, &save_mx);
+        }
+        save_pending = 0;
+        saving = 1;
+        pthread_mutex_unlock(&save_mx);
+        save_window();
+        pthread_mutex_lock(&save_mx);
+        saving = 0;
+        pthread_mutex_unlock(&save_mx);
+    }
+    return NULL;
 }
 
 static int on_tick(message_context_t *ctp, int code, unsigned flags, void *handle)
@@ -209,6 +361,12 @@ static void report(uint32_t *last_state)
         }
         printf("blackboxd: FROZEN with %u samples (%.1f s), %u ms after the trigger; read with bbtool dump\n",
                core.count, span, core.post_ms);
+        if (save_dir != NULL) {
+            pthread_mutex_lock(&save_mx);
+            save_pending = 1;
+            pthread_cond_signal(&save_cv);
+            pthread_mutex_unlock(&save_mx);
+        }
     }
     fflush(stdout);
     *last_state = core.state;
@@ -217,15 +375,17 @@ static void report(uint32_t *last_state)
 int main(int argc, char **argv)
 {
     uint32_t capacity = 30000, post_ms = 200, tick_us = 1000;
-    int tick_prio = 60, opt;
-    while ((opt = getopt(argc, argv, "n:p:t:P:")) != -1) {
+    int tick_prio = 60, save_prio = 8, opt;
+    while ((opt = getopt(argc, argv, "n:p:t:P:s:k:")) != -1) {
         switch (opt) {
         case 'n': capacity = (uint32_t)strtoul(optarg, NULL, 0); break;
         case 'p': post_ms = (uint32_t)strtoul(optarg, NULL, 0); break;
         case 't': tick_us = (uint32_t)strtoul(optarg, NULL, 0); break;
         case 'P': tick_prio = atoi(optarg); break;
+        case 's': save_dir = optarg; break;
+        case 'k': keep = (unsigned)strtoul(optarg, NULL, 0); break;
         default:
-            fprintf(stderr, "usage: blackboxd [-n capacity] [-p post_ms] [-t tick_us] [-P tick_priority]\n");
+            fprintf(stderr, "usage: blackboxd [-n capacity] [-p post_ms] [-t tick_us] [-P tick_priority] [-s dir] [-k keep]\n");
             return EXIT_FAILURE;
         }
     }
@@ -240,6 +400,27 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
     bb_init(&core, storage, capacity, cps, post_ms);
+
+    if (save_dir != NULL) {
+        if (mkdir(save_dir, 0750) == -1 && errno != EEXIST) {
+            printf("blackboxd: cannot create %s (%s); frozen windows stay in RAM only\n", save_dir, strerror(errno));
+            save_dir = NULL;
+        } else {
+            remove_partial();
+            pthread_attr_t attr_t;
+            struct sched_param sp = { .sched_priority = save_prio };
+            pthread_attr_init(&attr_t);
+            pthread_attr_setinheritsched(&attr_t, PTHREAD_EXPLICIT_SCHED);
+            pthread_attr_setschedpolicy(&attr_t, SCHED_FIFO);
+            pthread_attr_setschedparam(&attr_t, &sp);
+            pthread_t tid;
+            if (pthread_create(&tid, &attr_t, saver, NULL) != EOK) {
+                printf("blackboxd: cannot start the saver thread; frozen windows stay in RAM only\n");
+                save_dir = NULL;
+            }
+            pthread_attr_destroy(&attr_t);
+        }
+    }
 
     dispatch_t *const dpp = dispatch_create_channel(-1, DISPATCH_FLAG_NOLOCK);
     if (dpp == NULL) {
@@ -285,6 +466,9 @@ int main(int argc, char **argv)
 
     printf("blackboxd: recording at %s: %u samples, post-trigger %u ms, watchdog every %u us at priority %d\n",
            BB_PATH, capacity, post_ms, tick_us, tick_prio);
+    if (save_dir != NULL) {
+        printf("blackboxd: frozen windows are also saved to %s (newest %u kept), at priority %d\n", save_dir, keep, save_prio);
+    }
     fflush(stdout);
 
     dispatch_context_t *ctp = dispatch_context_alloc(dpp);

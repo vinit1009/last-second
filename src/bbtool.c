@@ -159,7 +159,12 @@ int main(int argc, char **argv)
         return cmd_status(fd);
     }
     if (strcmp(cmd, "trigger") == 0 || strcmp(cmd, "reset") == 0) {
-        int const rc = devctl(fd, strcmp(cmd, "trigger") == 0 ? DCMD_BB_TRIGGER : DCMD_BB_RESET, NULL, 0, NULL);
+        int const dcmd = strcmp(cmd, "trigger") == 0 ? DCMD_BB_TRIGGER : DCMD_BB_RESET;
+        int rc = devctl(fd, dcmd, NULL, 0, NULL);
+        for (int tries = 0; rc == EBUSY && tries < 100; ++tries) { /* reset waits for a save to disk */
+            usleep(100000);
+            rc = devctl(fd, dcmd, NULL, 0, NULL);
+        }
         if (rc != EOK) {
             fprintf(stderr, "bbtool: %s: %s\n", cmd, strerror(rc));
             return EXIT_FAILURE;

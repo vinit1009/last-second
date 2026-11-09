@@ -21,8 +21,8 @@ INK, MUTED, GRID, RED, AMBER, BLUE = "#1d2327", "#5f6b73", "#e3e7ea", "#c0392b",
 
 
 def load(path):
-    with open(path) as f:
-        return [{k: float(v) for k, v in row.items()} for row in csv.DictReader(f)]
+    with open(path) as f:  # bbtool dump CSV, or a window blackboxd saved (with a leading # line)
+        return [{k: float(v) for k, v in row.items()} for row in csv.DictReader(line for line in f if not line.startswith("#"))]
 
 
 def scene_facts(log_path, scene):

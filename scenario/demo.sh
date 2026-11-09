@@ -11,7 +11,8 @@ MODE=$(cat secpol-mode 2>/dev/null || echo no)
 if [ "$MODE" = no ]; then T() { shift; "$@"; }; else T() { t=$1; shift; on -T "$t" "$@"; }; fi
 sleep 3
 echo "===LS-BEGIN $MODE==="
-T blackbox_t blackboxd -n 30000 -p 200 &
+echo "windows saved by earlier boots:"; ls /data/var/blackbox 2>/dev/null | grep window- || echo "  none"
+T blackbox_t blackboxd -n 30000 -p 200 -s /data/var/blackbox &
 sleep 1
 
 echo "===LS-SCENE heartbeat==="
@@ -37,6 +38,7 @@ T bbtool_t bbtool dump -n 1500
 echo "===LS-CSV-END crash==="
 echo "core dumps:"; ls -l /data/var/dumper 2>/dev/null | grep -i pump
 T bbtool_t bbtool reset
+echo "saved windows on disk (kept across reboots):"; ls -l /data/var/blackbox | grep window-
 if [ "$MODE" != no ]; then
   echo "===LS-SCENE intruder==="
   # Any other type must be refused by the kernel before the recorder sees a message. (In open mode
