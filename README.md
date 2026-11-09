@@ -90,6 +90,7 @@ devctl(fd, DCMD_BB_GOODBYE, NULL, 0, NULL);   /* a clean stop is not a trigger *
 - `src/pump.c`, `src/hog.c`, `src/bbtool.c`: the demo and the service tool.
 - `scenario/demo.sh`, `image/local/snippets/`, `target/`: the boot-time demo, the image, building and QEMU.
 - `policy/last-second.secpol`: the security policy. `host/plot.py` draws the charts.
+- `examples/`: the console log and both frozen windows from the run on the secure image (what the charts and the numbers above come from).
 
 ## Limits
 

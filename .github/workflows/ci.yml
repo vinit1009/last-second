@@ -1,0 +1,13 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  host-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: The recorder's logic, with address and undefined-behaviour sanitizers
+        run: make test SANITIZE="-fsanitize=address,undefined"
+      - name: Draw the recorded windows
+        run: |
+          python3 host/plot.py examples/heartbeat.csv /tmp/heartbeat.svg --log examples/serial.log --scene heartbeat
+          python3 host/plot.py examples/crash.csv /tmp/crash.svg --log examples/serial.log --scene crash
